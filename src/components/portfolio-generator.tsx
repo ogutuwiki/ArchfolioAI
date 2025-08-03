@@ -8,6 +8,7 @@ import Image from "next/image";
 import {
   FileText,
   Globe,
+  Map,
   PlusCircle,
   Share2,
   Sparkles,
@@ -41,6 +42,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { suggestLayout, SuggestLayoutOutput } from "@/ai/flows/suggest-layout";
+import { generateMap } from "@/ai/flows/generate-map";
 import { Logo } from "@/components/logo";
 import {
   DropdownMenu,
@@ -69,6 +71,7 @@ interface PortfolioData extends ProjectFormData {
 
 export default function PortfolioGenerator() {
   const [isPending, startTransition] = useTransition();
+  const [isGeneratingMap, setIsGeneratingMap] = useState(false);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,27 +100,28 @@ export default function PortfolioGenerator() {
     const newImages = Array.from(files).map((file) => ({
       file,
       id: uuidv4(),
+      isMap: false,
     }));
 
     newImages.forEach(async (imageData) => {
+      setPortfolio((prev) => ({
+        ...prev,
+        images: [
+          ...prev.images,
+          { url: URL.createObjectURL(imageData.file), uploadProgress: 0 },
+        ],
+      }));
+
       const storageRef = ref(storage, `images/${imageData.id}-${imageData.file.name}`);
 
       try {
-        setPortfolio((prev) => ({
-          ...prev,
-          images: [
-            ...prev.images,
-            { url: URL.createObjectURL(imageData.file), uploadProgress: 0 },
-          ],
-        }));
-
         await uploadBytes(storageRef, imageData.file);
         const downloadURL = await getDownloadURL(storageRef);
 
         setPortfolio((prev) => ({
           ...prev,
           images: prev.images.map((img) =>
-            img.url.startsWith("blob:") ? { url: downloadURL, uploadProgress: 100 } : img
+            img.url.startsWith("blob:") && !img.url.startsWith("data:") ? { url: downloadURL, uploadProgress: 100 } : img
           ),
         }));
 
@@ -143,6 +147,46 @@ export default function PortfolioGenerator() {
       images: prev.images.filter((_, i) => i !== index),
     }));
   };
+
+  const handleGenerateMap = async () => {
+    const location = form.getValues("location");
+    if (!location) {
+      toast({
+        variant: "destructive",
+        title: "Location required",
+        description: "Please enter a location to generate a map.",
+      });
+      return;
+    }
+
+    setIsGeneratingMap(true);
+    toast({
+      title: "Generating Map...",
+      description: "The AI is creating a custom map for your location.",
+    });
+
+    try {
+      const result = await generateMap({ location });
+      setPortfolio((prev) => ({
+        ...prev,
+        images: [...prev.images, { url: result.mapDataUri, uploadProgress: 100 }],
+      }));
+       toast({
+        title: "Map Generated!",
+        description: "A custom map has been added to your project images.",
+      });
+    } catch (error) {
+       console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Map Generation Failed",
+        description: "Could not generate a map for the specified location.",
+      });
+    } finally {
+      setIsGeneratingMap(false);
+    }
+  };
+
 
   const onSubmit = (data: ProjectFormData) => {
     startTransition(async () => {
@@ -258,18 +302,28 @@ export default function PortfolioGenerator() {
                         </FormItem>
                       )}
                     />
-                    <FormField
-                      control={form.control}
-                      name="location"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Location</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., Aspen, Colorado" {...field} />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
+                    <div className="space-y-2">
+                       <FormField
+                        control={form.control}
+                        name="location"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Location</FormLabel>
+                            <FormControl>
+                              <Input placeholder="e.g., Aspen, Colorado" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <Button type="button" variant="outline" size="sm" className="w-full" onClick={handleGenerateMap} disabled={isGeneratingMap}>
+                        {isGeneratingMap ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-2 h-4 w-4 text-amber-400" />
+                        )}
+                        Generate Site Map (Premium)
+                      </Button>
+                    </div>
                     <FormField
                       control={form.control}
                       name="year"
@@ -319,6 +373,12 @@ export default function PortfolioGenerator() {
                          {uploadProgress !== null && uploadProgress < 100 && (
                           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                             <Loader2 className="h-8 w-8 text-white animate-spin" />
+                          </div>
+                        )}
+                        {url.startsWith("data:") && (
+                          <div className="absolute top-1 left-1 bg-primary/80 text-primary-foreground text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                            <Map className="h-3 w-3" />
+                            MAP
                           </div>
                         )}
                         <Button
