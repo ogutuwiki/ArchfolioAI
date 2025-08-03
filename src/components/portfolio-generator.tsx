@@ -147,6 +147,14 @@ export default function PortfolioGenerator() {
   const onSubmit = (data: ProjectFormData) => {
     startTransition(async () => {
       setPortfolio((prev) => ({ ...prev, ...data, layout: null }));
+       if (portfolio.images.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'No Images',
+          description: 'Please upload at least one image to generate a portfolio.',
+        });
+        return;
+      }
 
       const projectDetails = `
         Project Title: ${data.title}
@@ -420,24 +428,55 @@ export default function PortfolioGenerator() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  {portfolio.images.map(({url}, index) => (
-                    <div key={index} className={`relative aspect-[4/3] ${index === 0 || index === portfolio.images.length-1 ? 'col-span-2' : 'col-span-1'}`}>
-                      {isPending ? <Skeleton className="h-full w-full" /> : <Image src={url} alt={`Portfolio image ${index + 1}`} fill className="object-cover rounded-md" data-ai-hint="architectural design" />}
-                    </div>
-                  ))}
-                </div>
+                {/* DYNAMIC LAYOUT AREA */}
+                {portfolio.layout?.layout ? (
+                   <div className={`grid grid-cols-${portfolio.layout.layout.gridCols} gap-4`}>
+                    {portfolio.layout.layout.components.map((component, index) => {
+                      const { gridPosition, type, content } = component;
+                      const style = {
+                        gridColumn: `span ${gridPosition.colSpan}`,
+                        gridRow: `span ${gridPosition.rowSpan}`,
+                      };
 
-                {portfolio.layout?.textBoxes && portfolio.layout.textBoxes.length > 0 && (
-                  <div className="grid md:grid-cols-2 gap-8">
-                    {portfolio.layout.textBoxes.map((box, index) => (
-                      <div key={index}>
-                        <h4 className="font-headline text-xl font-bold mb-2">{box.title}</h4>
-                        <p className="text-muted-foreground text-sm">{box.content}</p>
+                      if (type === 'image' && 'imageIndex' in content) {
+                        const image = portfolio.images[content.imageIndex];
+                        return (
+                          <div key={index} className="relative aspect-[4/3]" style={style}>
+                            {image ? (
+                               <Image
+                                src={image.url}
+                                alt={`Portfolio image ${content.imageIndex + 1}`}
+                                fill
+                                className="object-cover rounded-md"
+                                data-ai-hint="architectural design"
+                              />
+                            ) : <Skeleton className="h-full w-full" />}
+                          </div>
+                        );
+                      }
+
+                      if (type === 'text' && 'title' in content) {
+                        return (
+                          <div key={index} style={style} className="p-4 flex flex-col justify-center">
+                            <h4 className="font-headline text-xl font-bold mb-2">{content.title}</h4>
+                            <p className="text-muted-foreground text-sm">{content.content}</p>
+                          </div>
+                        );
+                      }
+                      
+                      return <div key={index} style={style}><Skeleton className="h-full w-full" /></div>;
+                    })}
+                   </div>
+                ) : isPending ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {[...Array(portfolio.images.length || 4)].map((_, index) => (
+                      <div key={index} className={`relative aspect-[4/3] ${index === 0 || index === 3 ? 'col-span-2' : 'col-span-1'}`}>
+                        <Skeleton className="h-full w-full" />
                       </div>
                     ))}
                   </div>
-                )}
+                ) : null }
+
                 
                 {isPending || portfolio.layout ? (
                   <Card className="bg-accent/30 border-accent/50">
