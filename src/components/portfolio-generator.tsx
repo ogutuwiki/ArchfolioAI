@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import React, { useState, useTransition } from "react";
+import React, { useState, useTransition, useRef } from "react";
 import Image from "next/image";
 import {
   FileText,
@@ -16,6 +16,8 @@ import {
   Loader2,
   Lightbulb,
 } from "lucide-react";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { v4 as uuidv4 } from 'uuid';
 
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { storage } from "@/lib/firebase";
 
 const projectSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters."),
@@ -60,23 +63,19 @@ const projectSchema = z.object({
 type ProjectFormData = z.infer<typeof projectSchema>;
 
 interface PortfolioData extends ProjectFormData {
-  images: string[];
+  images: { url: string; uploadProgress: number | null }[];
   layout: SuggestLayoutOutput | null;
 }
 
 export default function PortfolioGenerator() {
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [portfolio, setPortfolio] = useState<PortfolioData>({
     title: "",
     description: "",
-    images: [
-      "https://placehold.co/800x600.png",
-      "https://placehold.co/600x800.png",
-      "https://placehold.co/800x600.png",
-      "https://placehold.co/600x800.png",
-    ],
+    images: [],
     layout: null,
   });
 
@@ -92,11 +91,50 @@ export default function PortfolioGenerator() {
     },
   });
 
-  const handleAddImage = () => {
-    const newImage = `https://placehold.co/800x${
-      Math.floor(Math.random() * 200) + 500
-    }.png`;
-    setPortfolio((prev) => ({ ...prev, images: [...prev.images, newImage] }));
+  const handleImageUpload = async (files: FileList | null) => {
+    if (!files) return;
+
+    const newImages = Array.from(files).map((file) => ({
+      file,
+      id: uuidv4(),
+    }));
+
+    newImages.forEach(async (imageData) => {
+      const storageRef = ref(storage, `images/${imageData.id}-${imageData.file.name}`);
+
+      try {
+        setPortfolio((prev) => ({
+          ...prev,
+          images: [
+            ...prev.images,
+            { url: URL.createObjectURL(imageData.file), uploadProgress: 0 },
+          ],
+        }));
+
+        await uploadBytes(storageRef, imageData.file);
+        const downloadURL = await getDownloadURL(storageRef);
+
+        setPortfolio((prev) => ({
+          ...prev,
+          images: prev.images.map((img) =>
+            img.url.startsWith("blob:") ? { url: downloadURL, uploadProgress: 100 } : img
+          ),
+        }));
+
+      } catch (error) {
+        console.error("Upload failed", error);
+        toast({
+          variant: "destructive",
+          title: "Upload failed",
+          description: "Could not upload image.",
+        });
+        // Remove the failed placeholder
+        setPortfolio((prev) => ({
+          ...prev,
+          images: prev.images.filter((img) => !img.url.startsWith("blob:")),
+        }));
+      }
+    });
   };
 
   const handleRemoveImage = (index: number) => {
@@ -122,7 +160,7 @@ export default function PortfolioGenerator() {
       try {
         const result = await suggestLayout({
           projectDetails,
-          imageUrls: portfolio.images,
+          imageUrls: portfolio.images.map(img => img.url),
         });
         setPortfolio((prev) => ({ ...prev, layout: result }));
         toast({
@@ -261,7 +299,7 @@ export default function PortfolioGenerator() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    {portfolio.images.map((url, index) => (
+                    {portfolio.images.map(({ url, uploadProgress }, index) => (
                       <div key={index} className="relative group aspect-[3/4]">
                         <Image
                           src={url}
@@ -270,6 +308,11 @@ export default function PortfolioGenerator() {
                           className="object-cover rounded-lg"
                           data-ai-hint="architecture interior"
                         />
+                         {uploadProgress !== null && uploadProgress < 100 && (
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <Loader2 className="h-8 w-8 text-white animate-spin" />
+                          </div>
+                        )}
                         <Button
                           type="button"
                           variant="destructive"
@@ -283,12 +326,20 @@ export default function PortfolioGenerator() {
                     ))}
                     <button
                       type="button"
-                      onClick={handleAddImage}
+                      onClick={() => fileInputRef.current?.click()}
                       className="flex flex-col items-center justify-center aspect-[3/4] border-2 border-dashed rounded-lg text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                     >
                       <UploadCloud className="h-8 w-8" />
-                      <span className="mt-2 text-sm">Add Image</span>
+                      <span className="mt-2 text-sm">Upload</span>
                     </button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => handleImageUpload(e.target.files)}
+                      />
                   </div>
                 </CardContent>
               </Card>
@@ -370,7 +421,7 @@ export default function PortfolioGenerator() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  {portfolio.images.map((url, index) => (
+                  {portfolio.images.map(({url}, index) => (
                     <div key={index} className={`relative aspect-[4/3] ${index === 0 || index === portfolio.images.length-1 ? 'col-span-2' : 'col-span-1'}`}>
                       {isPending ? <Skeleton className="h-full w-full" /> : <Image src={url} alt={`Portfolio image ${index + 1}`} fill className="object-cover rounded-md" data-ai-hint="architectural design" />}
                     </div>
