@@ -100,18 +100,19 @@ export default function PortfolioGenerator() {
     const newImages = Array.from(files).map((file) => ({
       file,
       id: uuidv4(),
-      isMap: false,
+      blobUrl: URL.createObjectURL(file),
+    }));
+
+    // Add all placeholders first
+    setPortfolio((prev) => ({
+      ...prev,
+      images: [
+        ...prev.images,
+        ...newImages.map((img) => ({ url: img.blobUrl, uploadProgress: 0 })),
+      ],
     }));
 
     newImages.forEach(async (imageData) => {
-      setPortfolio((prev) => ({
-        ...prev,
-        images: [
-          ...prev.images,
-          { url: URL.createObjectURL(imageData.file), uploadProgress: 0 },
-        ],
-      }));
-
       const storageRef = ref(storage, `images/${imageData.id}-${imageData.file.name}`);
 
       try {
@@ -121,21 +122,22 @@ export default function PortfolioGenerator() {
         setPortfolio((prev) => ({
           ...prev,
           images: prev.images.map((img) =>
-            img.url.startsWith("blob:") && !img.url.startsWith("data:") ? { url: downloadURL, uploadProgress: 100 } : img
+            img.url === imageData.blobUrl
+              ? { url: downloadURL, uploadProgress: 100 }
+              : img
           ),
         }));
-
       } catch (error) {
         console.error("Upload failed", error);
         toast({
           variant: "destructive",
           title: "Upload failed",
-          description: "Could not upload image.",
+          description: `Could not upload image: ${imageData.file.name}`,
         });
-        // Remove the failed placeholder
+        // Remove the specific failed placeholder
         setPortfolio((prev) => ({
           ...prev,
-          images: prev.images.filter((img) => !img.url.startsWith("blob:")),
+          images: prev.images.filter((img) => img.url !== imageData.blobUrl),
         }));
       }
     });
