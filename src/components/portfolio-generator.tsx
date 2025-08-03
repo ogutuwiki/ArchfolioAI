@@ -428,6 +428,17 @@ export default function PortfolioGenerator() {
                   ))}
                 </div>
 
+                {portfolio.layout?.textBoxes && portfolio.layout.textBoxes.length > 0 && (
+                  <div className="grid md:grid-cols-2 gap-8">
+                    {portfolio.layout.textBoxes.map((box, index) => (
+                      <div key={index}>
+                        <h4 className="font-headline text-xl font-bold mb-2">{box.title}</h4>
+                        <p className="text-muted-foreground text-sm">{box.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
                 {isPending || portfolio.layout ? (
                   <Card className="bg-accent/30 border-accent/50">
                     <CardHeader>

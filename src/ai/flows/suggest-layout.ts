@@ -19,8 +19,14 @@ const SuggestLayoutInputSchema = z.object({
 });
 export type SuggestLayoutInput = z.infer<typeof SuggestLayoutInputSchema>;
 
+const TextBoxSchema = z.object({
+  title: z.string().describe('A short title for the text box (e.g., "Section", "Elevation").'),
+  content: z.string().describe("Placeholder lorem ipsum text for the text box."),
+});
+
 const SuggestLayoutOutputSchema = z.object({
   layoutDescription: z.string().describe('A detailed description of the suggested layout for the portfolio, including the arrangement of images and text.'),
+  textBoxes: z.array(TextBoxSchema).describe('A list of text boxes with placeholder content to be placed on the portfolio layout for things like sections and elevations.'),
 });
 export type SuggestLayoutOutput = z.infer<typeof SuggestLayoutOutputSchema>;
 
@@ -41,12 +47,13 @@ Consider the following when suggesting the layout:
 - The arrangement of images to showcase the project effectively.
 - The placement of text to provide context and information.
 - The overall visual appeal of the portfolio.
+- Suggest 2-3 text boxes for important information like "Floor Plan Details" or "Materials Palette". These text boxes should contain placeholder 'lorem ipsum' text.
 
 Project Details: {{{projectDetails}}}
 Image URLs: {{#each imageUrls}}{{{this}}} {{/each}}
 
-Suggest a layout:
-`, // Ensure the prompt is well-formatted and clear.
+Suggest a layout, including a description and an array of text boxes with titles and lorem ipsum content.
+`,
 });
 
 const suggestLayoutFlow = ai.defineFlow(
